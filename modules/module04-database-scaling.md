@@ -14,6 +14,22 @@ Sharding splits one logical dataset across multiple physical database instances 
 
 Most production systems combine two of these: hash the primary entity for write distribution, but keep a directory to handle exceptions (celebrity accounts, oversized tenants) and range logic within a shard for secondary access patterns.
 
+### SQL vs NoSQL Sharding Implementations
+
+The theory of sharding applies universally, but the *implementation* differs wildly between traditional relational databases and modern distributed stores.
+
+**SQL Sharding (Manual & Middleware)**
+Relational databases were designed to scale vertically. Splitting them horizontally breaks core RDBMS features: cross-shard JOINs become incredibly expensive (or impossible), global ACID transactions require complex two-phase commits (2PC), and foreign key constraints cannot be enforced across shards. 
+- **Application-Level Sharding:** Historically, the application code itself maintained multiple database connection strings and executed the routing logic (e.g., `if user_id % 2 == 0 connect to DB_A`).
+- **Middleware / Proxies:** Modern architectures use transparent proxies to make a sharded fleet look like a single logical database to the application. Examples include **Vitess** (originally built by YouTube for MySQL) and **Citus** (an extension for PostgreSQL).
+- **NewSQL:** A new generation of distributed SQL databases (like **Google Spanner** and **CockroachDB**) are built from the ground up to provide native auto-sharding while maintaining global ACID guarantees (often leveraging synchronized clocks and consensus protocols like Raft/Paxos).
+
+**NoSQL Sharding (Native Auto-Sharding)**
+NoSQL databases were built for horizontal scale from day one. Because data is heavily denormalized, the lack of cross-shard JOINs is an accepted design constraint rather than a broken feature. Sharding is a native, out-of-the-box capability.
+- **Peer-to-Peer Ring (e.g., Cassandra):** A masterless architecture where all nodes are equal. It uses consistent hashing with virtual nodes (vnodes). Client drivers are "topology-aware" and route queries directly to the correct node holding the data, avoiding a centralized routing bottleneck.
+- **Router-based (e.g., MongoDB):** Uses a dedicated routing layer (`mongos`) and Config Servers. The Config Servers track how data is chunked and which shard owns which chunk. The `mongos` router directs queries accordingly.
+- **Fully Managed (e.g., DynamoDB):** The partitioning strategy is completely abstracted from the user. DynamoDB automatically splits and redistributes data across physical partitions under the hood based on the hash of your chosen partition key and the table's provisioned throughput.
+
 ### Consistent Hashing for Shard Routing
 
 Plain modulo hashing (`hash(key) % N`) remaps roughly `(N-1)/N` of all keys whenever N changes — adding one node to a 10-node cluster invalidates ~90% of the mapping, meaning almost the whole dataset must move. Consistent hashing fixes this.
